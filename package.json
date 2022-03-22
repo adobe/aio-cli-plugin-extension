@@ -1,0 +1,89 @@
+{
+  "name": "@adobe/aio-cli-plugin-extension",
+  "version": "1.0.0",
+  "dependencies": {
+    "@adobe/aio-cli-lib-app-config": "^0.2.1",
+    "@adobe/aio-cli-lib-console": "^3.1.0",
+    "@adobe/aio-lib-core-config": "^2.0.0",
+    "@adobe/aio-lib-core-logging": "^1.1.0",
+    "@adobe/aio-lib-env": "^1.1.0",
+    "@adobe/aio-lib-events": "^1.1.3",
+    "@adobe/aio-lib-ims": "^5.1.0",
+    "@oclif/command": "^1.6.1",
+    "@oclif/config": "^1.15.1",
+    "@oclif/errors": "^1.1.2",
+    "uuid": "^3.4.0",
+    "@adobe/aio-cli-plugin-app": "^8.5.1"
+  },
+  "devDependencies": {
+    "@adobe/eslint-config-aio-lib-config": "^1.2.0",
+    "@oclif/dev-cli": "^1",
+    "@oclif/plugin-help": "^2",
+    "acorn": "^7",
+    "chalk": "^4",
+    "eslint": "^7",
+    "eslint-config-oclif": "^3.1.0",
+    "eslint-config-standard": "^16",
+    "eslint-plugin-import": "^2.21.2",
+    "eslint-plugin-jest": "^23.13.2",
+    "eslint-plugin-jsdoc": "^37",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-promise": "^5",
+    "eslint-plugin-standard": "^4.0.1",
+    "execa": "^4",
+    "jest": "^24",
+    "jest-haste-map": "^24.5.0",
+    "jest-junit": "^6.0.0",
+    "jest-resolve": "^24.5.0",
+    "stdout-stderr": "^0.1.9"
+  },
+  "engines": {
+    "node": ">=8.0.0"
+  },
+  "files": [
+    "/oclif.manifest.json",
+    "/src"
+  ],
+  "keywords": [
+    "oclif-plugin"
+  ],
+  "license": "Apache-2.0",
+  "oclif": {
+    "commands": "./src/commands",
+    "bin": "aio",
+    "devPlugins": [
+      "@oclif/plugin-help"
+    ],
+    "repositoryPrefix": "<%- repo %>/blob/<%- version %>/<%- commandPath %>",
+    "hooks": {
+      "postrun": "./src/hooks/register_events"
+    }
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "pretest": "eslint src test e2e",
+    "test": "npm run unit-tests",
+    "unit-tests": "jest --ci",
+    "prepack": "oclif-dev manifest && oclif-dev readme",
+    "postpack": "rm -f oclif.manifest.json",
+    "version": "oclif-dev readme && git add README.md",
+    "e2e": "jest --collectCoverage=false --testRegex './e2e/e2e.js'"
+  },
+  "jest": {
+    "collectCoverage": true,
+    "testPathIgnorePatterns": [
+      "<rootDir>/tests/fixtures/"
+    ],
+    "coveragePathIgnorePatterns": [
+      "<rootDir>/tests/fixtures/"
+    ],
+    "reporters": [
+      "default",
+      "jest-junit"
+    ],
+    "testEnvironment": "node",
+    "setupFilesAfterEnv": [
+      "./jest.setup.js"
+    ]
+  }
+}
