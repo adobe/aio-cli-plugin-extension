@@ -13,7 +13,8 @@
     "@oclif/config": "^1.15.1",
     "@oclif/errors": "^1.1.2",
     "uuid": "^3.4.0",
-    "@adobe/aio-cli-plugin-app": "^8.5.1"
+    "@adobe/aio-cli-plugin-app": "^8.5.1",
+    "inquirer": "^8.2.2"
   },
   "devDependencies": {
     "@adobe/eslint-config-aio-lib-config": "^1.2.0",

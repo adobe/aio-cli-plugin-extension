@@ -21,7 +21,10 @@ const { Command, flags } = require('@oclif/command');
 const eventsSdk = require('@adobe/aio-lib-events');
 const getUrlCommand = require('@adobe/aio-cli-plugin-app/src/commands/app/get-url');
 const process = require('process');
-const spinner = require('ora')()
+const ora = require('ora');
+const inquirer = require('inquirer');
+const prompt = inquirer.createPromptModule({ output: process.stderr });
+
 
 const ENTP_INT_CERTS_FOLDER = 'entp-int-certs';
 const CONSOLE_API_KEYS = {
@@ -35,12 +38,17 @@ const providerCache = [];
 async function findProviderByEvent(client, orgId, event) {
     if (providerCache.length == 0) {
         aioLogger.debug('Loading provider infromation');
+        const spinner = ora();
         spinner.start('Fetching event providers information');
         const response = await client.getAllProviders(orgId);
         const providers = response._embedded.providers;
         
         for (provider in providers) {
-            const newProvider = { id: providers[provider].id };
+            const newProvider = { 
+                id: providers[provider].id,
+                label: providers[provider].label
+            };
+            
             const providerInfo = await client.getAllEventMetadataForProvider(providers[provider].id);
             newProvider.events = providerInfo._embedded.eventmetadata.map(e => e.event_code);
             providerCache.push(newProvider);
@@ -54,11 +62,33 @@ async function findProviderByEvent(client, orgId, event) {
     });
     
     if (result.length > 0) {
-        aioLogger.debug('Found provider by event code ' + event);
-        return result[0].id;
+        aioLogger.debug('Found provider(s) by event code ' + event);
+        return result;
     }
     aioLogger.debug('Provider for event code ' + event + ' is not found in org');
     throw new Error('Event provider with event code ' + event + ' doesn\'t exist in your organization ' + orgId);
+}
+
+async function selectProvider(providers, eventType) {
+    if (providers.length == 0) {
+        throw new Error('Event providers list is empty. You need to specify at least one provider to select from.');
+    }
+    if (providers.length == 1) {
+        aioLogger.debug('There is a single matching event provider found for event');
+        return {res: providers[0].id};
+    }
+    aioLogger.debug('Multiple event providers found for the event code. Initiating selection dialog...');
+    const message = 'We found multiple event providers for event type ' + eventType + '. Please select provider for this project'
+    const choices = providers.map(e => { return {name: e.label, value: e.id}});
+    return await prompt([
+      {
+        type: 'list',
+        name: 'res',
+        message,
+        choices
+      }
+    ])
+    
 }
 
 const hook = async function (options) {
@@ -80,13 +110,14 @@ const hook = async function (options) {
     if (!projectConfig) {
       throw new Error('Incomplete .aio configuration, please import a valid Adobe Developer Console configuration via `aio app use` first.')
     }
-    const orgId = projectConfig.org.id
+    const orgId = projectConfig.org.id;
+    const orgCode = projectConfig.org.ims_org_id;
     const project = { name: projectConfig.name, id: projectConfig.id }
     const workspace = { name: projectConfig.workspace.name, id: projectConfig.workspace.id }
     
     const env = getCliEnv();
-
     await context.setCli({ 'cli.bare-output': true }, false) // set this globally
+    const accessToken = await getToken(CLI)
     const cliObject = await context.getCli();
     //const integrationCredentials = (await context.get(workspace.name))
     const apiKey = CONSOLE_API_KEYS[env];
@@ -133,10 +164,9 @@ const hook = async function (options) {
     } else {
         aioLogger.debug('Current aio cli token allows to access IO management API');
     }
-    
-    const client = await eventsSdk.init(orgId, workspaceCreds.client_id, cliObject.access_token.token);
+   
+    const client = await eventsSdk.init(orgCode, workspaceCreds.client_id, accessToken);
     const workspaceIntegration = projectConfig.workspace.details.credentials && projectConfig.workspace.details.credentials.find(c => c.integration_type === 'service')
-    
 
     aioLogger.debug('Getting runtime action urls from get-url command');
     // Temporary removing console output to make clean UX
@@ -145,12 +175,13 @@ const hook = async function (options) {
     const urls = await getUrlCommand.run(['--json']);
     // Restoring console output function
     process.stdout.write = tempBackup
-
+    
     for (const action in actions) {
         aioLogger.debug('Processing event types defined for action ' + action);
         if ('event_listener_for' in actions[action]) {
             for (eventCode in actions[action].event_listener_for) {
-                const providerId = await findProviderByEvent(client, orgId, actions[action].event_listener_for[eventCode]);
+                const providers = await findProviderByEvent(client, orgId, actions[action].event_listener_for[eventCode]);
+                const providerId = await selectProvider(providers, actions[action].event_listener_for[eventCode]);
                 const registrationName = "extension auto registration " + uuidv4();
                 
                 const body = {
@@ -161,13 +192,13 @@ const hook = async function (options) {
                     "webhook_url": urls.runtime[action],
                     "events_of_interest": [
                         {
-                            "provider_id": providerId,
+                            "provider_id": providerId.res,
                             "event_code": actions[action].event_listener_for[eventCode]
                         }
                     ]
                 };
                 
-                const registration = await client.createWebhookRegistration(orgId, workspaceIntegration.id, body);
+                const registration = await client.createWebhookRegistration(projectConfig.org.id, workspaceIntegration.id, body);
             } 
         }
     }
