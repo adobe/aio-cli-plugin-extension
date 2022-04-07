@@ -32,6 +32,7 @@ const CONSOLE_API_KEYS = {
     stage: 'aio-cli-console-auth-stage'
 };
 const AIO_CONFIG_WORKSPACE_SERVICES = 'project.workspace.details.services';
+const AIO_CONFIG_EVENTS_LISTENERS = 'project.workspace.listeners';
 
 const providerCache = [];
 
@@ -175,11 +176,17 @@ const hook = async function (options) {
     const urls = await getUrlCommand.run(['--json']);
     // Restoring console output function
     process.stdout.write = tempBackup
-    
+    // coreConfig.set(AIO_CONFIG_WORKSPACE_SERVICES, serviceConfig, true);
+    const appliedEvents = coreConfig.get(AIO_CONFIG_EVENTS_LISTENERS) || [];
     for (const action in actions) {
         aioLogger.debug('Processing event types defined for action ' + action);
         if ('event_listener_for' in actions[action]) {
             for (eventCode in actions[action].event_listener_for) {
+                if (appliedEvents.includes(actions[action].event_listener_for[eventCode])) {
+                    aioLogger.debug('This app is already subscribed to event ' + actions[action].event_listener_for[eventCode]);
+                    continue;
+                }
+                appliedEvents.push(actions[action].event_listener_for[eventCode]);
                 const providers = await findProviderByEvent(client, orgId, actions[action].event_listener_for[eventCode]);
                 const providerId = await selectProvider(providers, actions[action].event_listener_for[eventCode]);
                 const registrationName = "extension auto registration " + uuidv4();
@@ -199,6 +206,7 @@ const hook = async function (options) {
                 };
                 
                 const registration = await client.createWebhookRegistration(projectConfig.org.id, workspaceIntegration.id, body);
+                coreConfig.set(AIO_CONFIG_EVENTS_LISTENERS, appliedEvents, true);
             } 
         }
     }
