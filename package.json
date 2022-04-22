@@ -4,6 +4,7 @@
   "dependencies": {
     "@adobe/aio-cli-lib-app-config": "^0.2.1",
     "@adobe/aio-cli-lib-console": "^3.1.0",
+    "@adobe/aio-cli-plugin-app": "^8.5.1",
     "@adobe/aio-lib-core-config": "^2.0.0",
     "@adobe/aio-lib-core-logging": "^1.1.0",
     "@adobe/aio-lib-env": "^1.1.0",
@@ -12,9 +13,9 @@
     "@oclif/command": "^1.6.1",
     "@oclif/config": "^1.15.1",
     "@oclif/errors": "^1.1.2",
-    "uuid": "^3.4.0",
-    "@adobe/aio-cli-plugin-app": "^8.5.1",
-    "inquirer": "^8.2.2"
+    "inquirer": "^8.2.2",
+    "ora": "^4.1.1",
+    "uuid": "^3.4.0"
   },
   "devDependencies": {
     "@adobe/eslint-config-aio-lib-config": "^1.2.0",
@@ -60,7 +61,6 @@
       "postrun": "./src/hooks/register_events"
     }
   },
-  "main": "src/index.js",
   "scripts": {
     "pretest": "eslint src test e2e",
     "test": "npm run unit-tests",
