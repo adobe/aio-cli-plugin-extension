@@ -205,7 +205,7 @@ const hook = async function (options) {
     }))
     coreConfig.set(AIO_CONFIG_WORKSPACE_SERVICES, serviceConfig, true)
   } else {
-    aioLogger.debug('Current aio cli token allows to access IO management API')
+    aioLogger.debug('Current aio cli token allows access to IO management API')
   }
 
   if (['app:undeploy'].includes(options.Command.id)) {
