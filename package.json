@@ -1,6 +1,6 @@
 {
   "name": "@adobe/aio-cli-plugin-extension",
-  "version": "1.0.0-beta.1",
+  "version": "1.0.0-beta.2",
   "dependencies": {
     "@adobe/aio-cli-lib-app-config": "^0.2.1",
     "@adobe/aio-cli-lib-console": "^3.1.0",
@@ -62,13 +62,13 @@
     }
   },
   "scripts": {
-    "pretest": "eslint src test e2e",
+    "pretest": "eslint src e2e",
     "test": "npm run unit-tests",
-    "unit-tests": "jest --ci",
+    "unit-tests": "jest --ci --passWithNoTests",
     "prepack": "oclif-dev manifest && oclif-dev readme",
     "postpack": "rm -f oclif.manifest.json",
     "version": "oclif-dev readme && git add README.md",
-    "e2e": "jest --collectCoverage=false --testRegex './e2e/e2e.js'"
+    "e2e": "jest --collectCoverage=false --testRegex './e2e/e2e.js' --passWithNoTests"
   },
   "jest": {
     "collectCoverage": true,

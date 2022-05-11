@@ -137,9 +137,9 @@ async function deleteObsoleteRegistrations (actions, client, orgId, integrationI
 }
 
 const hook = async function (options) {
-  //Empty aio run
+  // Empty aio run
   if (!options.Command) {
-    return;
+    return
   }
 
   if (!['app:deploy', 'app:undeploy'].includes(options.Command.id)) {
