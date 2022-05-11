@@ -137,6 +137,11 @@ async function deleteObsoleteRegistrations (actions, client, orgId, integrationI
 }
 
 const hook = async function (options) {
+  //Empty aio run
+  if (!options.Command) {
+    return;
+  }
+
   if (!['app:deploy', 'app:undeploy'].includes(options.Command.id)) {
     aioLogger.debug('App builder extension plugin works only for app:deploy command. Skipping...')
     return
