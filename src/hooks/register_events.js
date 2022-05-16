@@ -31,7 +31,7 @@ const CONSOLE_API_KEYS = {
 }
 const AIO_CONFIG_WORKSPACE_SERVICES = 'project.workspace.details.services'
 const AIO_CONFIG_EVENTS_LISTENERS = 'project.workspace.listeners'
-const EVENTS_KEY = 'event-listener-for';
+const EVENTS_KEY = 'event-listener-for'
 
 const providerCache = []
 
@@ -232,13 +232,13 @@ const hook = async function (options) {
     aioLogger.debug('Processing event types defined for action ' + action)
     // Skip actions with empty listeners node
     if (!actions[action].relations || !actions[action].relations[EVENTS_KEY]) {
-      continue;
+      continue
     }
 
     for (const eventCode in actions[action].relations[EVENTS_KEY]) {
-      const currentEventType = actions[action].relations[EVENTS_KEY][eventCode];
+      const currentEventType = actions[action].relations[EVENTS_KEY][eventCode]
       const isEventApplied = (appliedEvents.filter(e => e.event_type === currentEventType)).length > 0
-      
+
       // Skip event types that already have subscription
       if (isEventApplied) {
         aioLogger.debug('This app is already subscribed to event ' + currentEventType)
@@ -272,7 +272,6 @@ const hook = async function (options) {
 
       coreConfig.set(AIO_CONFIG_EVENTS_LISTENERS, appliedEvents, true)
     }
-    
   }
   await deleteObsoleteRegistrations(actions, client, projectConfig.org.id, workspaceIntegration.id)
 }
