@@ -31,6 +31,7 @@ const CONSOLE_API_KEYS = {
 }
 const AIO_CONFIG_WORKSPACE_SERVICES = 'project.workspace.details.services'
 const AIO_CONFIG_EVENTS_LISTENERS = 'project.workspace.listeners'
+const EVENTS_KEY = 'event-listener-for';
 
 const providerCache = []
 
@@ -117,11 +118,11 @@ async function deleteObsoleteRegistrations (actions, client, orgId, integrationI
   const existingListeners = []
   aioLogger.debug('Processing deleted subscriptions...')
   for (const index in actions) {
-    if (!actions[index].event_listener_for) {
+    if (!actions[index].relations || !actions[index].relations[EVENTS_KEY]) {
       continue
     }
-    for (const eventIndex in actions[index].event_listener_for) {
-      existingListeners.push(actions[index].event_listener_for[eventIndex])
+    for (const eventIndex in actions[index].relations[EVENTS_KEY]) {
+      existingListeners.push(actions[index].relations[EVENTS_KEY][eventIndex])
     }
   }
   for (const index in appliedEvents) {
@@ -229,42 +230,49 @@ const hook = async function (options) {
   const appliedEvents = coreConfig.get(AIO_CONFIG_EVENTS_LISTENERS) || []
   for (const action in actions) {
     aioLogger.debug('Processing event types defined for action ' + action)
-    if ('event_listener_for' in actions[action]) {
-      for (const eventCode in actions[action].event_listener_for) {
-        const isEventApplied = (appliedEvents.filter(e => e.event_type === actions[action].event_listener_for[eventCode])).length > 0
-        if (isEventApplied) {
-          aioLogger.debug('This app is already subscribed to event ' + actions[action].event_listener_for[eventCode])
-          continue
-        }
-
-        const providers = await findProviderByEvent(client, orgId, actions[action].event_listener_for[eventCode])
-        const providerId = await selectProvider(providers, actions[action].event_listener_for[eventCode])
-        const registrationName = 'extension auto registration ' + uuidv4()
-
-        const body = {
-          name: registrationName,
-          client_id: workspaceCreds.client_id,
-          description: registrationName,
-          delivery_type: 'WEBHOOK_BATCH',
-          webhook_url: urls.runtime[action],
-          events_of_interest: [
-            {
-              provider_id: providerId.res,
-              event_code: actions[action].event_listener_for[eventCode]
-            }
-          ]
-        }
-
-        const registration = await client.createWebhookRegistration(projectConfig.org.id, workspaceIntegration.id, body)
-
-        appliedEvents.push({
-          event_type: actions[action].event_listener_for[eventCode],
-          registration_id: registration.registration_id
-        })
-
-        coreConfig.set(AIO_CONFIG_EVENTS_LISTENERS, appliedEvents, true)
-      }
+    // Skip actions with empty listeners node
+    if (!actions[action].relations || !actions[action].relations[EVENTS_KEY]) {
+      continue;
     }
+
+    for (const eventCode in actions[action].relations[EVENTS_KEY]) {
+      const currentEventType = actions[action].relations[EVENTS_KEY][eventCode];
+      const isEventApplied = (appliedEvents.filter(e => e.event_type === currentEventType)).length > 0
+      
+      // Skip event types that already have subscription
+      if (isEventApplied) {
+        aioLogger.debug('This app is already subscribed to event ' + currentEventType)
+        continue
+      }
+
+      const providers = await findProviderByEvent(client, orgId, currentEventType)
+      const providerId = await selectProvider(providers, currentEventType)
+      const registrationName = 'extension auto registration ' + uuidv4()
+
+      const body = {
+        name: registrationName,
+        client_id: workspaceCreds.client_id,
+        description: registrationName,
+        delivery_type: 'WEBHOOK_BATCH',
+        webhook_url: urls.runtime[action],
+        events_of_interest: [
+          {
+            provider_id: providerId.res,
+            event_code: currentEventType
+          }
+        ]
+      }
+
+      const registration = await client.createWebhookRegistration(projectConfig.org.id, workspaceIntegration.id, body)
+
+      appliedEvents.push({
+        event_type: currentEventType,
+        registration_id: registration.registration_id
+      })
+
+      coreConfig.set(AIO_CONFIG_EVENTS_LISTENERS, appliedEvents, true)
+    }
+    
   }
   await deleteObsoleteRegistrations(actions, client, projectConfig.org.id, workspaceIntegration.id)
 }

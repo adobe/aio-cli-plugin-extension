@@ -29,10 +29,14 @@ application:
               LOG_LEVEL: debug
             annotations:
               require-adobe-auth: false
-            event_listener_for:
-              - {{YOUR_EVENT_TYPE}}
+            relations:
+              event-listener-for:
+                - {{YOUR_EVENT_TYPE}}
 ```
 Replace `{{YOUR_EVENT_TYPE}}` with your event and `actions/generic/index.js` with path to your function
+
+## Updating
+Launch `aio plugins update` console command
 
 ## Contributing
 
