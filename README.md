@@ -23,7 +23,7 @@ application:
         actions:
           generic:
             function: actions/generic/index.js
-            web: 'yes'
+            web: 'no'
             runtime: 'nodejs:14'
             inputs:
               LOG_LEVEL: debug
@@ -34,6 +34,9 @@ application:
                 - {{YOUR_EVENT_TYPE}}
 ```
 Replace `{{YOUR_EVENT_TYPE}}` with your event and `actions/generic/index.js` with path to your function
+
+## Security
+We recommend to declare all your actions as non-web actions. This way only Adobe IO Events will be able to deliver data to your action.
 
 ## Updating
 Launch `aio plugins update` console command
