@@ -67,7 +67,7 @@ async function createPackageIfNotExists (packageName, boundPackage = undefined, 
     aioLogger.debug('Package ' + packageName + ' already exists. Skipping...')
     return
   }
-  console.log('Creating new package ' + packageName)
+  aioLogger.debug('Creating new package ' + packageName)
   const client = await getRtClient()
   const package = {}
 
