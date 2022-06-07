@@ -236,7 +236,7 @@ const hook = async function (options) {
         const isEventApplied = (appliedEvents.filter(e => e.event_type === currentEventType)).length > 0
 
         const providers = await findProviderByEvent(client, orgId, currentEventType)
-        const currentProvivder = await selectProvider(providers, currentEventType)
+        const currentProvider = await selectProvider(providers, currentEventType)
 
         const registrationName = 'extension auto registration ' + uuidv4()
 
@@ -250,7 +250,7 @@ const hook = async function (options) {
 
         await createPackageIfNotExists('acp')
 
-        const customHandlerName = '3rd_party_custom_events_' + orgCode + '_' + currentProvivder.instance_id + '_' + currentEventType + '_' + pkgName + action
+        const customHandlerName = '3rd_party_custom_events_' + orgCode + '_' + currentProvider.instance_id + '_' + currentEventType + '_' + pkgName + action
 
         await createSequenceIfNotExists(
           '/' + fullConfig.application.ow.namespace + '/acp/sync_event_handler',
@@ -291,7 +291,7 @@ const hook = async function (options) {
           webhook_url: actionUrl,
           events_of_interest: [
             {
-              provider_id: currentProvivder.id,
+              provider_id: currentProvider.id,
               event_code: currentEventType
             }
           ]
