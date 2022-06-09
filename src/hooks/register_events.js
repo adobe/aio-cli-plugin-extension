@@ -18,11 +18,11 @@ const { CLI } = require('@adobe/aio-lib-ims/src/context')
 const LibConsoleCLI = require('@adobe/aio-cli-lib-console')
 const aioLogger = require('@adobe/aio-lib-core-logging')('@adobe/aio-cli-plugin-extension', { provider: 'debug' })
 const eventsSdk = require('@adobe/aio-lib-events')
-const getUrlCommand = require('@adobe/aio-cli-plugin-app/src/commands/app/get-url')
 const process = require('process')
 const ora = require('ora')
 const inquirer = require('inquirer')
 const prompt = inquirer.createPromptModule({ output: process.stderr })
+const { createSequenceIfNotExists, createPackageIfNotExists } = require('../utils')
 
 const ENTP_INT_CERTS_FOLDER = 'entp-int-certs'
 const CONSOLE_API_KEYS = {
@@ -54,7 +54,8 @@ async function findProviderByEvent (client, orgId, event) {
     for (const provider in providers) {
       const newProvider = {
         id: providers[provider].id,
-        label: providers[provider].label
+        label: providers[provider].label,
+        instance_id: providers[provider].instance_id
       }
 
       const providerInfo = await client.getAllEventMetadataForProvider(providers[provider].id)
@@ -94,8 +95,9 @@ async function selectProvider (providers, eventType) {
   }
   aioLogger.debug('Multiple event providers found for the event code. Initiating selection dialog...')
   const message = 'We found multiple event providers for event type ' + eventType + '. Please select provider for this project'
-  const choices = providers.map(e => { return { name: e.label, value: e.id } })
-  return await prompt([
+  const choices = providers.map(e => { return { name: e.label, value: e.id, instance_id: e.instance_id } })
+
+  const result = await prompt([
     {
       type: 'list',
       name: 'res',
@@ -103,28 +105,34 @@ async function selectProvider (providers, eventType) {
       choices
     }
   ])
+
+  return providers.find(e => e.id === result.res)
 }
 
 /**
  * Deletes applied registrations which are not present in action's definitions
  *
- * @param {*} actions - actions declaration from app builder manifest
+ * @param {*} packages - packages declaration from app builder manifest
  * @param {*} client - event api client from sdk
  * @param {string} orgId - Adobe org id
  * @param {string} integrationId - id of JWT integration
  */
-async function deleteObsoleteRegistrations (actions, client, orgId, integrationId) {
+async function deleteObsoleteRegistrations (packages, client, orgId, integrationId) {
   const appliedEvents = coreConfig.get(AIO_CONFIG_EVENTS_LISTENERS) || []
   const existingListeners = []
   aioLogger.debug('Processing deleted subscriptions...')
-  for (const index in actions) {
-    if (!actions[index].relations || !actions[index].relations[EVENTS_KEY]) {
-      continue
+
+  Object.entries(packages).forEach(async ([pkgName, pkg]) => {
+    for (const index in pkg.actions) {
+      if (!pkg.actions[index].relations || !pkg.actions[index].relations[EVENTS_KEY]) {
+        continue
+      }
+      for (const eventIndex in pkg.actions[index].relations[EVENTS_KEY]) {
+        existingListeners.push(pkg.actions[index].relations[EVENTS_KEY][eventIndex])
+      }
     }
-    for (const eventIndex in actions[index].relations[EVENTS_KEY]) {
-      existingListeners.push(actions[index].relations[EVENTS_KEY][eventIndex])
-    }
-  }
+  })
+
   for (const index in appliedEvents) {
     if (existingListeners.includes(appliedEvents[index].event_type)) {
       continue
@@ -148,13 +156,7 @@ const hook = async function (options) {
     return
   }
 
-  const appBuilderConfig = loadConfig({}).all.application.manifest.full.packages.appbuilder || {}
-  const actions = appBuilderConfig.actions || {}
-
-  if (!actions) {
-    aioLogger.debug('No app builder actions are defined. Skipping...')
-    return
-  }
+  const fullConfig = loadConfig({}).all
 
   // load console configuration from .aio and .env files
   const projectConfig = coreConfig.get('project')
@@ -219,61 +221,95 @@ const hook = async function (options) {
     return await deleteObsoleteRegistrations([], client, projectConfig.org.id, workspaceIntegration.id)
   }
 
-  aioLogger.debug('Getting runtime action urls from get-url command')
-  // Temporary removing console output to make clean UX
-  const tempBackup = process.stdout.write
-  process.stdout.write = function () { }
-  const urls = await getUrlCommand.run(['--json'])
-  // Restoring console output function
-  process.stdout.write = tempBackup
-
   const appliedEvents = coreConfig.get(AIO_CONFIG_EVENTS_LISTENERS) || []
-  for (const action in actions) {
-    aioLogger.debug('Processing event types defined for action ' + action)
-    // Skip actions with empty listeners node
-    if (!actions[action].relations || !actions[action].relations[EVENTS_KEY]) {
-      continue
-    }
 
-    for (const eventCode in actions[action].relations[EVENTS_KEY]) {
-      const currentEventType = actions[action].relations[EVENTS_KEY][eventCode]
-      const isEventApplied = (appliedEvents.filter(e => e.event_type === currentEventType)).length > 0
-
-      // Skip event types that already have subscription
-      if (isEventApplied) {
-        aioLogger.debug('This app is already subscribed to event ' + currentEventType)
+  Object.entries(fullConfig.application.manifest.full.packages).forEach(async ([pkgName, pkg]) => {
+    for (const action in pkg.actions) {
+      aioLogger.debug('Processing event types defined for action ' + action)
+      // Skip actions with empty listeners node
+      if (!pkg.actions[action].relations || !pkg.actions[action].relations[EVENTS_KEY]) {
         continue
       }
 
-      const providers = await findProviderByEvent(client, orgId, currentEventType)
-      const providerId = await selectProvider(providers, currentEventType)
-      const registrationName = 'extension auto registration ' + uuidv4()
+      for (const eventCode in pkg.actions[action].relations[EVENTS_KEY]) {
+        const currentEventType = pkg.actions[action].relations[EVENTS_KEY][eventCode]
+        const isEventApplied = (appliedEvents.filter(e => e.event_type === currentEventType)).length > 0
 
-      const body = {
-        name: registrationName,
-        client_id: workspaceCreds.client_id,
-        description: registrationName,
-        delivery_type: 'WEBHOOK_BATCH',
-        webhook_url: urls.runtime[action],
-        events_of_interest: [
+        const providers = await findProviderByEvent(client, orgId, currentEventType)
+        const currentProvider = await selectProvider(providers, currentEventType)
+
+        const registrationName = 'extension auto registration ' + uuidv4()
+
+        // For private event listeners we have to create multiple additional actions
+        await createPackageIfNotExists('bound_package', '/adobe/acp-event-handler-3.0.0', [
           {
-            provider_id: providerId.res,
-            event_code: currentEventType
+            key: 'recipient_client_id',
+            value: workspaceCreds.client_id
           }
-        ]
+        ])
+
+        await createPackageIfNotExists('acp')
+
+        const customHandlerName = '3rd_party_custom_events_' + orgCode + '_' + currentProvider.instance_id + '_' + currentEventType + '_' + pkgName + action
+
+        await createSequenceIfNotExists(
+          '/' + fullConfig.application.ow.namespace + '/acp/sync_event_handler',
+          ['/' + fullConfig.application.ow.namespace + '/bound_package/handler'], {
+            final: 'false',
+            event_handler_sequence: 'sync_event_handler',
+            'web-export': true,
+            'raw-http': true
+          },
+          'yes'
+        )
+
+        await createSequenceIfNotExists(
+          customHandlerName,
+          [
+            '/' + fullConfig.application.ow.namespace + '/bound_package/validate_action',
+            '/' + fullConfig.application.ow.namespace + '/' + pkgName + '/' + action
+          ], {
+            user_sequence: 'true',
+            'raw-http': 'true'
+          }
+        )
+
+        // Skip event types that already have subscription
+        if (isEventApplied) {
+          aioLogger.debug('This app is already subscribed to event ' + currentEventType)
+          continue
+        }
+
+        const actionUrl = fullConfig.application.ow.apihost + '/api/' + fullConfig.application.ow.apiversion + '/web/' +
+          fullConfig.application.ow.namespace + '/acp/sync_event_handler?sync=true&id=' + pkgName + action
+
+        const body = {
+          name: registrationName,
+          client_id: workspaceCreds.client_id,
+          description: registrationName,
+          delivery_type: 'WEBHOOK',
+          webhook_url: actionUrl,
+          events_of_interest: [
+            {
+              provider_id: currentProvider.id,
+              event_code: currentEventType
+            }
+          ]
+        }
+
+        const registration = await client.createWebhookRegistration(projectConfig.org.id, workspaceIntegration.id, body)
+
+        appliedEvents.push({
+          event_type: currentEventType,
+          registration_id: registration.registration_id
+        })
+
+        coreConfig.set(AIO_CONFIG_EVENTS_LISTENERS, appliedEvents, true)
       }
-
-      const registration = await client.createWebhookRegistration(projectConfig.org.id, workspaceIntegration.id, body)
-
-      appliedEvents.push({
-        event_type: currentEventType,
-        registration_id: registration.registration_id
-      })
-
-      coreConfig.set(AIO_CONFIG_EVENTS_LISTENERS, appliedEvents, true)
     }
-  }
-  await deleteObsoleteRegistrations(actions, client, projectConfig.org.id, workspaceIntegration.id)
+  })
+
+  await deleteObsoleteRegistrations(fullConfig.application.manifest.full.packages, client, projectConfig.org.id, workspaceIntegration.id)
 }
 
 module.exports = hook
