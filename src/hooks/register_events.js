@@ -156,13 +156,15 @@ const hook = async function (options) {
     return
   }
 
-  const fullConfig = loadConfig({}).all
+  const appConfig = await loadConfig({})
+  const fullConfig = appConfig.all
 
   // load console configuration from .aio and .env files
   const projectConfig = coreConfig.get('project')
   if (!projectConfig) {
     throw new Error('Incomplete .aio configuration, please import a valid Adobe Developer Console configuration via `aio app use` first.')
   }
+
   const orgId = projectConfig.org.id
   const orgCode = projectConfig.org.ims_org_id
   const project = { name: projectConfig.name, id: projectConfig.id }
