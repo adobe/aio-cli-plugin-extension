@@ -92,7 +92,7 @@ async function selectProvider (providers, eventType) {
   }
   if (providers.length === 1) {
     aioLogger.debug('There is a single matching event provider found for event')
-    return { name: providers[0].label, value: providers[0].id, instance_id: providers[0].instance_id }
+    return providers[0]
   }
   aioLogger.debug('Multiple event providers found for the event code. Initiating selection dialog...')
   const message = 'We found multiple event providers for event type ' + eventType + '. Please select provider for this project'
@@ -229,8 +229,8 @@ const hook = async function (options) {
   const packages = fullConfig.application.manifest.full.packages
   for (const packageIndex in packages) {
     const pkg = packages[packageIndex]
-    const pkgName = packageIndex;
-  //Object.entries(fullConfig.application.manifest.full.packages).forEach(async ([pkgName, pkg]) => {
+    const pkgName = packageIndex
+
     for (const action in pkg.actions) {
       aioLogger.debug('Processing event types defined for action ' + action)
       // Skip actions with empty listeners node

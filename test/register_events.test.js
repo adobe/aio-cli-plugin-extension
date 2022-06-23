@@ -23,7 +23,7 @@ jest.mock('@adobe/aio-lib-runtime')
 const inquirer = require('inquirer')
 jest.mock('inquirer')
 const prompt = jest.fn(() => {})
-inquirer.createPromptModule.mockResolvedValue(prompt)
+inquirer.createPromptModule.mockReturnValue(prompt)
 
 const deleteWebhookRegistration = jest.fn(() => undefined)
 const getAllProviders = jest.fn(() => undefined)
@@ -118,6 +118,58 @@ beforeEach(() => {
   consoleCli.subscribeToServices.mockReset()
   serviceProperties.mockResolvedValue([])
   createWebhookRegistration.mockClear()
+
+  getAllProviders.mockResolvedValue({
+    _embedded: {
+      providers: [
+        {
+          id: 'test_provider_id',
+          label: 'test provider label',
+          instance_id: 'test_provider_instance_id'
+        },
+        {
+          id: 'test_provider_id2',
+          label: 'test provider label2',
+          instance_id: 'test_provider_instance_id2'
+        },
+        {
+          id: 'test_provider_id3',
+          label: 'test provider label3',
+          instance_id: 'test_provider_instance_id3'
+        }
+      ]
+    }
+  })
+
+  getAllEventMetadataForProvider.mockResolvedValueOnce({
+    _embedded: {
+      eventmetadata: [
+        {
+          event_code: 'test_event_type'
+        }
+      ]
+    }
+  }).mockResolvedValueOnce({
+    _embedded: {
+      eventmetadata: [
+        {
+          event_code: 'test_event_type2'
+        }
+      ]
+    }
+  }).mockResolvedValueOnce({
+    _embedded: {
+      eventmetadata: [
+        {
+          event_code: 'test_event_type2'
+        }
+      ]
+    }
+  })
+
+  serviceProperties.mockResolvedValue([{
+    sdkCode: 'AdobeIOManagementAPISDK'
+  }])
 })
 
 
@@ -172,6 +224,7 @@ describe('Extensions plugin hook', () => {
   })
 
   it('Should add IO management permissions to local creds if absent', async () => {
+    serviceProperties.mockResolvedValue([])
     await hook({
       Command: {
         id: 'app:deploy'
@@ -251,9 +304,6 @@ describe('Extensions plugin hook', () => {
       }
     ])
 
-    serviceProperties.mockResolvedValue([{
-      sdkCode: 'AdobeIOManagementAPISDK'
-    }])
     await hook({
       Command: {
         id: 'app:undeploy'
@@ -289,9 +339,7 @@ describe('Extensions plugin hook', () => {
 
       }
     })
-    serviceProperties.mockResolvedValue([{
-      sdkCode: 'AdobeIOManagementAPISDK'
-    }])
+
     await hook({
       Command: {
         id: 'app:deploy'
@@ -333,63 +381,21 @@ describe('Extensions plugin hook', () => {
 
       }
     })
-    serviceProperties.mockResolvedValue([{
-      sdkCode: 'AdobeIOManagementAPISDK'
-    }])
-
-    getAllProviders.mockResolvedValue({
-      _embedded: {
-        providers: [
-          {
-            id: 'test_provider_id',
-            label: 'test provider label',
-            instance_id: 'test_provider_instance_id'
-          },
-          {
-            id: 'test_provider_id2',
-            label: 'test provider label2',
-            instance_id: 'test_provider_instance_id2'
-          }
-        ]
-      }
-    })
-
-    getAllEventMetadataForProvider.mockResolvedValueOnce({
-      _embedded: {
-        eventmetadata: [
-          {
-            event_code: 'test_event_type'
-          }
-        ]
-      }
-    }).mockResolvedValueOnce({
-      _embedded: {
-        eventmetadata: [
-          {
-            event_code: 'test_event_type2'
-          }
-        ]
-      }
-    })
 
     prompt.mockResolvedValue({ res: 'test_provider_id' })
 
     coreConfigMock.get.mockReturnValueOnce([])
-    try {
-      await hook({
-        Command: {
-          id: 'app:deploy'
-        },
-        config: {
-          dataDir: '/tmp'
-        }
-      })
-      expect(getAllProviders).toHaveBeenCalledTimes(1)
-      expect(createWebhookRegistration).toHaveBeenCalledTimes(1)
-    } catch (error) {
-      console.log(error)
-      throw error
-    }
+
+    await hook({
+      Command: {
+        id: 'app:deploy'
+      },
+      config: {
+        dataDir: '/tmp'
+      }
+    })
+    expect(getAllProviders).toHaveBeenCalledTimes(1)
+    expect(createWebhookRegistration).toHaveBeenCalledTimes(1)
   })
 
   it('Should choose from multiple providers and register single webhook', async () => {
@@ -404,7 +410,7 @@ describe('Extensions plugin hook', () => {
                     test_action: {
                       runtime: 'nodejs:14',
                       relations: {
-                        'event-listener-for': ['test_event_type']
+                        'event-listener-for': ['test_event_type2']
                       }
                     }
                   }
@@ -422,46 +428,8 @@ describe('Extensions plugin hook', () => {
 
       }
     })
-    serviceProperties.mockResolvedValue([{
-      sdkCode: 'AdobeIOManagementAPISDK'
-    }])
 
-    getAllProviders.mockResolvedValue({
-      _embedded: {
-        providers: [
-          {
-            id: 'test_provider_id',
-            label: 'test provider label',
-            instance_id: 'test_provider_instance_id'
-          },
-          {
-            id: 'test_provider_id2',
-            label: 'test provider label2',
-            instance_id: 'test_provider_instance_id2'
-          }
-        ]
-      }
-    })
-
-    getAllEventMetadataForProvider.mockResolvedValueOnce({
-      _embedded: {
-        eventmetadata: [
-          {
-            event_code: 'test_event_type'
-          }
-        ]
-      }
-    }).mockResolvedValueOnce({
-      _embedded: {
-        eventmetadata: [
-          {
-            event_code: 'test_event_type2'
-          }
-        ]
-      }
-    })
-
-    prompt.mockResolvedValue({ res: 'test_provider_id2' })
+    prompt.mockResolvedValue({ res: 'test_provider_id3' })
 
     coreConfigMock.get.mockReturnValueOnce([])
 
@@ -475,6 +443,14 @@ describe('Extensions plugin hook', () => {
     })
     expect(getAllProviders).toHaveBeenCalledTimes(1)
     expect(createWebhookRegistration).toHaveBeenCalledTimes(1)
+    expect(createWebhookRegistration).toBeCalledWith('testid', 'test_credentials_id',
+      expect.objectContaining({
+        events_of_interest: expect.arrayContaining([expect.objectContaining({
+          provider_id: 'test_provider_id3',
+          event_code: 'test_event_type2'
+        })])
+      })
+    )
 
   })
 
@@ -518,44 +494,6 @@ describe('Extensions plugin hook', () => {
 
       }
     })
-    serviceProperties.mockResolvedValue([{
-      sdkCode: 'AdobeIOManagementAPISDK'
-    }])
-
-    getAllProviders.mockResolvedValue({
-      _embedded: {
-        providers: [
-          {
-            id: 'test_provider_id',
-            label: 'test provider label',
-            instance_id: 'test_provider_instance_id'
-          },
-          {
-            id: 'test_provider_id2',
-            label: 'test provider label2',
-            instance_id: 'test_provider_instance_id2'
-          }
-        ]
-      }
-    })
-
-    getAllEventMetadataForProvider.mockResolvedValueOnce({
-      _embedded: {
-        eventmetadata: [
-          {
-            event_code: 'test_event_type'
-          }
-        ]
-      }
-    }).mockResolvedValueOnce({
-      _embedded: {
-        eventmetadata: [
-          {
-            event_code: 'test_event_type2'
-          }
-        ]
-      }
-    })
 
     prompt.mockResolvedValue({ res: 'test_provider_id2' })
 
@@ -568,7 +506,24 @@ describe('Extensions plugin hook', () => {
         dataDir: '/tmp'
       }
     })
+
     expect(getAllProviders).toHaveBeenCalledTimes(1)
     expect(createWebhookRegistration).toHaveBeenCalledTimes(2)
+    expect(createWebhookRegistration).toBeCalledWith('testid', 'test_credentials_id',
+      expect.objectContaining({
+        events_of_interest: expect.arrayContaining([expect.objectContaining({
+          provider_id: 'test_provider_id',
+          event_code: 'test_event_type'
+        })])
+      })
+    )
+    expect(createWebhookRegistration).toBeCalledWith('testid', 'test_credentials_id',
+      expect.objectContaining({
+        events_of_interest: expect.arrayContaining([expect.objectContaining({
+          provider_id: 'test_provider_id2',
+          event_code: 'test_event_type2'
+        })])
+      })
+    )
   })
 })
