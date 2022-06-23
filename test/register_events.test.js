@@ -20,6 +20,11 @@ jest.mock('@adobe/aio-lib-events')
 const rtLib = require('@adobe/aio-lib-runtime')
 jest.mock('@adobe/aio-lib-runtime')
 
+const inquirer = require('inquirer')
+jest.mock('inquirer')
+const prompt = jest.fn(() => {})
+inquirer.createPromptModule.mockResolvedValue(prompt)
+
 const deleteWebhookRegistration = jest.fn(() => undefined)
 const getAllProviders = jest.fn(() => undefined)
 const getAllEventMetadataForProvider = jest.fn(() => undefined)
@@ -60,14 +65,17 @@ const rtClient = {
   }
 }
 
+const hook = require('../src/hooks/register_events')
+const expect = require('expect')
+
 beforeEach(() => {
   coreConfigMock.get.mockReset()
 
-  rtLib.init.mockReturnValue(rtClient)
+  rtLib.init.mockResolvedValue(rtClient)
 
   coreConfigMock.set.mockReturnValue(true)
   coreConfigMock.get.mockReturnValue({ globalConfig: 'seems-legit' })
-  loadConfig.mockReturnValue({
+  loadConfig.mockResolvedValue({
     all: {
       application: {
         manifest: {
@@ -78,10 +86,10 @@ beforeEach(() => {
       }
     }
   })
-  getCliEnv.mockReturnValue('prod')
-  getToken.mockReturnValue('token mock')
-  context.getCli.mockReturnValue({ access_token: { token: 'token mock' }})
-  eventsSdk.init.mockReturnValue(eventsClient)
+  getCliEnv.mockResolvedValue('prod')
+  getToken.mockResolvedValue('token mock')
+  context.getCli.mockResolvedValue({ access_token: { token: 'token mock' }})
+  eventsSdk.init.mockResolvedValue(eventsClient)
   coreConfigMock.get.mockReturnValueOnce({
     id: '123',
     project: undefined,
@@ -106,14 +114,12 @@ beforeEach(() => {
   }).mockReturnValueOnce([])
   .mockReturnValueOnce([])
 
-
-  LibConsoleCLI.init.mockReturnValue(consoleCli)
+  LibConsoleCLI.init.mockResolvedValue(consoleCli)
   consoleCli.subscribeToServices.mockReset()
-  serviceProperties.mockReturnValue([])
+  serviceProperties.mockResolvedValue([])
+  createWebhookRegistration.mockClear()
 })
 
-const hook = require('../src/hooks/register_events')
-const expect = require('expect')
 
 describe('Extensions plugin hook', () => {
   test('Doesn\'t work on --help command', async () => {
@@ -121,13 +127,28 @@ describe('Extensions plugin hook', () => {
     expect(coreConfigMock.get).toHaveBeenCalledTimes(0)
   })
 
+  test('Doesn\'t work on any command other than deploy/undeploy', async () => {
+    hook({
+      Command: {
+        id: 'absent:command'
+      },
+      config: {
+        dataDir: '/tmp'
+      }
+    })
+    expect(coreConfigMock.get).toHaveBeenCalledTimes(0)
+  })
+
   it('Works on deploy command', async () => {
-    coreConfigMock.get.mockReturnValue(undefined)
+    coreConfigMock.get.mockResolvedValue(undefined)
 
     try {
       await hook({
         Command: {
           id: 'app:deploy'
+        },
+        config: {
+          dataDir: '/tmp'
         }
       })
     } catch (e) {} // Expected error due to empty config
@@ -141,6 +162,9 @@ describe('Extensions plugin hook', () => {
       await hook({
         Command: {
           id: 'app:undeploy'
+        },
+        config: {
+          dataDir: '/tmp'
         }
       })
     } catch (e) {} // Expected error due to empty config
@@ -179,7 +203,7 @@ describe('Extensions plugin hook', () => {
   })
 
   it('Should not add IO management permissions to local creds if present', async () => {
-    serviceProperties.mockReturnValue([{
+    serviceProperties.mockResolvedValue([{
       sdkCode: 'AdobeIOManagementAPISDK'
     }])
     await hook({
@@ -227,7 +251,7 @@ describe('Extensions plugin hook', () => {
       }
     ])
 
-    serviceProperties.mockReturnValue([{
+    serviceProperties.mockResolvedValue([{
       sdkCode: 'AdobeIOManagementAPISDK'
     }])
     await hook({
@@ -245,7 +269,7 @@ describe('Extensions plugin hook', () => {
   })
 
   it('Should ignore actions without declared event types', async () => {
-    loadConfig.mockReturnValue({
+    loadConfig.mockResolvedValue({
       all: {
         application: {
           manifest: {
@@ -265,7 +289,7 @@ describe('Extensions plugin hook', () => {
 
       }
     })
-    serviceProperties.mockReturnValue([{
+    serviceProperties.mockResolvedValue([{
       sdkCode: 'AdobeIOManagementAPISDK'
     }])
     await hook({
@@ -280,7 +304,7 @@ describe('Extensions plugin hook', () => {
   })
 
   it('Should register single webhook', async () => {
-    loadConfig.mockReturnValue({
+    loadConfig.mockResolvedValue({
       all: {
         application: {
           manifest: {
@@ -300,29 +324,37 @@ describe('Extensions plugin hook', () => {
             }
           },
           ow: {
-            namespace: 'test_namespace'
+            namespace: 'test_namespace',
+            apihost: 'http://testhost.comtest',
+            apiversion: 'v1',
+            auth: 'test auth'
           }
         }
 
       }
     })
-    serviceProperties.mockReturnValue([{
+    serviceProperties.mockResolvedValue([{
       sdkCode: 'AdobeIOManagementAPISDK'
     }])
 
-    getAllProviders.mockReturnValue({
+    getAllProviders.mockResolvedValue({
       _embedded: {
         providers: [
           {
             id: 'test_provider_id',
             label: 'test provider label',
             instance_id: 'test_provider_instance_id'
+          },
+          {
+            id: 'test_provider_id2',
+            label: 'test provider label2',
+            instance_id: 'test_provider_instance_id2'
           }
         ]
       }
     })
 
-    getAllEventMetadataForProvider.mockReturnValue({
+    getAllEventMetadataForProvider.mockResolvedValueOnce({
       _embedded: {
         eventmetadata: [
           {
@@ -330,7 +362,106 @@ describe('Extensions plugin hook', () => {
           }
         ]
       }
+    }).mockResolvedValueOnce({
+      _embedded: {
+        eventmetadata: [
+          {
+            event_code: 'test_event_type2'
+          }
+        ]
+      }
     })
+
+    prompt.mockResolvedValue({ res: 'test_provider_id' })
+
+    coreConfigMock.get.mockReturnValueOnce([])
+    try {
+      await hook({
+        Command: {
+          id: 'app:deploy'
+        },
+        config: {
+          dataDir: '/tmp'
+        }
+      })
+      expect(getAllProviders).toHaveBeenCalledTimes(1)
+      expect(createWebhookRegistration).toHaveBeenCalledTimes(1)
+    } catch (error) {
+      console.log(error)
+      throw error
+    }
+  })
+
+  it('Should choose from multiple providers and register single webhook', async () => {
+    loadConfig.mockResolvedValue({
+      all: {
+        application: {
+          manifest: {
+            full: {
+              packages: {
+                test_package: {
+                  actions: {
+                    test_action: {
+                      runtime: 'nodejs:14',
+                      relations: {
+                        'event-listener-for': ['test_event_type']
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          ow: {
+            namespace: 'test_namespace',
+            apihost: 'http://testhost.comtest',
+            apiversion: 'v1',
+            auth: 'test auth'
+          }
+        }
+
+      }
+    })
+    serviceProperties.mockResolvedValue([{
+      sdkCode: 'AdobeIOManagementAPISDK'
+    }])
+
+    getAllProviders.mockResolvedValue({
+      _embedded: {
+        providers: [
+          {
+            id: 'test_provider_id',
+            label: 'test provider label',
+            instance_id: 'test_provider_instance_id'
+          },
+          {
+            id: 'test_provider_id2',
+            label: 'test provider label2',
+            instance_id: 'test_provider_instance_id2'
+          }
+        ]
+      }
+    })
+
+    getAllEventMetadataForProvider.mockResolvedValueOnce({
+      _embedded: {
+        eventmetadata: [
+          {
+            event_code: 'test_event_type'
+          }
+        ]
+      }
+    }).mockResolvedValueOnce({
+      _embedded: {
+        eventmetadata: [
+          {
+            event_code: 'test_event_type2'
+          }
+        ]
+      }
+    })
+
+    prompt.mockResolvedValue({ res: 'test_provider_id2' })
 
     coreConfigMock.get.mockReturnValueOnce([])
 
@@ -344,6 +475,100 @@ describe('Extensions plugin hook', () => {
     })
     expect(getAllProviders).toHaveBeenCalledTimes(1)
     expect(createWebhookRegistration).toHaveBeenCalledTimes(1)
+
   })
 
+  it('Should create two registration for two actions in two packages', async () => {
+    loadConfig.mockResolvedValue({
+      all: {
+        application: {
+          manifest: {
+            full: {
+              packages: {
+                test_package: {
+                  actions: {
+                    test_action: {
+                      runtime: 'nodejs:14',
+                      relations: {
+                        'event-listener-for': ['test_event_type']
+                      }
+                    }
+                  }
+                },
+                test_package2: {
+                  actions: {
+                    test_action2: {
+                      runtime: 'nodejs:14',
+                      relations: {
+                        'event-listener-for': ['test_event_type2']
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          ow: {
+            namespace: 'test_namespace',
+            apihost: 'http://testhost.comtest',
+            apiversion: 'v1',
+            auth: 'test auth'
+          }
+        }
+
+      }
+    })
+    serviceProperties.mockResolvedValue([{
+      sdkCode: 'AdobeIOManagementAPISDK'
+    }])
+
+    getAllProviders.mockResolvedValue({
+      _embedded: {
+        providers: [
+          {
+            id: 'test_provider_id',
+            label: 'test provider label',
+            instance_id: 'test_provider_instance_id'
+          },
+          {
+            id: 'test_provider_id2',
+            label: 'test provider label2',
+            instance_id: 'test_provider_instance_id2'
+          }
+        ]
+      }
+    })
+
+    getAllEventMetadataForProvider.mockResolvedValueOnce({
+      _embedded: {
+        eventmetadata: [
+          {
+            event_code: 'test_event_type'
+          }
+        ]
+      }
+    }).mockResolvedValueOnce({
+      _embedded: {
+        eventmetadata: [
+          {
+            event_code: 'test_event_type2'
+          }
+        ]
+      }
+    })
+
+    prompt.mockResolvedValue({ res: 'test_provider_id2' })
+
+    coreConfigMock.get.mockReturnValueOnce([])
+    await hook({
+      Command: {
+        id: 'app:deploy'
+      },
+      config: {
+        dataDir: '/tmp'
+      }
+    })
+    expect(getAllProviders).toHaveBeenCalledTimes(1)
+    expect(createWebhookRegistration).toHaveBeenCalledTimes(2)
+  })
 })

@@ -59,6 +59,7 @@ async function findProviderByEvent (client, orgId, event) {
       }
 
       const providerInfo = await client.getAllEventMetadataForProvider(providers[provider].id)
+
       newProvider.events = providerInfo._embedded.eventmetadata.map(e => e.event_code)
       providerCache.push(newProvider)
     }
@@ -91,7 +92,7 @@ async function selectProvider (providers, eventType) {
   }
   if (providers.length === 1) {
     aioLogger.debug('There is a single matching event provider found for event')
-    return { res: providers[0].id }
+    return { name: providers[0].label, value: providers[0].id, instance_id: providers[0].instance_id }
   }
   aioLogger.debug('Multiple event providers found for the event code. Initiating selection dialog...')
   const message = 'We found multiple event providers for event type ' + eventType + '. Please select provider for this project'
@@ -220,12 +221,16 @@ const hook = async function (options) {
 
   if (['app:undeploy'].includes(options.Command.id)) {
     aioLogger.debug('Unsubscribing from all events')
-    return await deleteObsoleteRegistrations([], client, projectConfig.org.id, workspaceIntegration.id)
+    await deleteObsoleteRegistrations([], client, projectConfig.org.id, workspaceIntegration.id)
+    return
   }
 
   const appliedEvents = coreConfig.get(AIO_CONFIG_EVENTS_LISTENERS) || []
-
-  Object.entries(fullConfig.application.manifest.full.packages).forEach(async ([pkgName, pkg]) => {
+  const packages = fullConfig.application.manifest.full.packages
+  for (const packageIndex in packages) {
+    const pkg = packages[packageIndex]
+    const pkgName = packageIndex;
+  //Object.entries(fullConfig.application.manifest.full.packages).forEach(async ([pkgName, pkg]) => {
     for (const action in pkg.actions) {
       aioLogger.debug('Processing event types defined for action ' + action)
       // Skip actions with empty listeners node
@@ -309,7 +314,7 @@ const hook = async function (options) {
         coreConfig.set(AIO_CONFIG_EVENTS_LISTENERS, appliedEvents, true)
       }
     }
-  })
+  }
 
   await deleteObsoleteRegistrations(fullConfig.application.manifest.full.packages, client, projectConfig.org.id, workspaceIntegration.id)
 }
