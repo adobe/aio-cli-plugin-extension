@@ -1,27 +1,21 @@
-const coreConfigMock = require('@adobe/aio-lib-core-config')
 jest.mock('@adobe/aio-lib-core-config')
-
-
-const loadConfig = require('@adobe/aio-cli-lib-app-config')
 jest.mock('@adobe/aio-cli-lib-app-config')
-
-const { getCliEnv } = require('@adobe/aio-lib-env')
 jest.mock('@adobe/aio-lib-env')
-
-const { getToken, context } = require('@adobe/aio-lib-ims')
 jest.mock('@adobe/aio-lib-ims')
-
-const LibConsoleCLI = require('@adobe/aio-cli-lib-console')
 jest.mock('@adobe/aio-cli-lib-console')
-
-const eventsSdk = require('@adobe/aio-lib-events')
 jest.mock('@adobe/aio-lib-events')
-
-const rtLib = require('@adobe/aio-lib-runtime')
 jest.mock('@adobe/aio-lib-runtime')
-
-const inquirer = require('inquirer')
 jest.mock('inquirer')
+
+const coreConfigMock = require('@adobe/aio-lib-core-config')
+const loadConfig = require('@adobe/aio-cli-lib-app-config')
+const { getCliEnv } = require('@adobe/aio-lib-env')
+const { getToken, context } = require('@adobe/aio-lib-ims')
+const LibConsoleCLI = require('@adobe/aio-cli-lib-console')
+const eventsSdk = require('@adobe/aio-lib-events')
+const rtLib = require('@adobe/aio-lib-runtime')
+const inquirer = require('inquirer')
+
 const prompt = jest.fn(() => {})
 inquirer.createPromptModule.mockReturnValue(prompt)
 
