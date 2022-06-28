@@ -69,7 +69,7 @@ async function createPackageIfNotExists (packageName, boundPackage = undefined, 
   }
   aioLogger.debug('Creating new package ' + packageName)
   const client = await getRtClient()
-  const package = {}
+  const pkg = {}
 
   if (boundPackage !== undefined) {
     // Removing heading slash
@@ -79,15 +79,15 @@ async function createPackageIfNotExists (packageName, boundPackage = undefined, 
     const boundPackageName = parts.pop()
     const boundPackageNamespace = parts.join('/')
 
-    package.binding = {
+    pkg.binding = {
       namespace: boundPackageNamespace,
       name: boundPackageName
     }
   }
 
-  package.parameters = params
+  pkg.parameters = params
 
-  await client.packages.update({ name: packageName, package })
+  await client.packages.update({ name: packageName, package: pkg })
 }
 
 /**

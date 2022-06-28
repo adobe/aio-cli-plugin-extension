@@ -59,6 +59,7 @@ async function findProviderByEvent (client, orgId, event) {
       }
 
       const providerInfo = await client.getAllEventMetadataForProvider(providers[provider].id)
+
       newProvider.events = providerInfo._embedded.eventmetadata.map(e => e.event_code)
       providerCache.push(newProvider)
     }
@@ -91,7 +92,7 @@ async function selectProvider (providers, eventType) {
   }
   if (providers.length === 1) {
     aioLogger.debug('There is a single matching event provider found for event')
-    return { res: providers[0].id }
+    return providers[0]
   }
   aioLogger.debug('Multiple event providers found for the event code. Initiating selection dialog...')
   const message = 'We found multiple event providers for event type ' + eventType + '. Please select provider for this project'
@@ -156,13 +157,15 @@ const hook = async function (options) {
     return
   }
 
-  const fullConfig = loadConfig({}).all
+  const appConfig = await loadConfig({})
+  const fullConfig = appConfig.all
 
   // load console configuration from .aio and .env files
   const projectConfig = coreConfig.get('project')
   if (!projectConfig) {
     throw new Error('Incomplete .aio configuration, please import a valid Adobe Developer Console configuration via `aio app use` first.')
   }
+
   const orgId = projectConfig.org.id
   const orgCode = projectConfig.org.ims_org_id
   const project = { name: projectConfig.name, id: projectConfig.id }
@@ -218,12 +221,16 @@ const hook = async function (options) {
 
   if (['app:undeploy'].includes(options.Command.id)) {
     aioLogger.debug('Unsubscribing from all events')
-    return await deleteObsoleteRegistrations([], client, projectConfig.org.id, workspaceIntegration.id)
+    await deleteObsoleteRegistrations([], client, projectConfig.org.id, workspaceIntegration.id)
+    return
   }
 
   const appliedEvents = coreConfig.get(AIO_CONFIG_EVENTS_LISTENERS) || []
+  const packages = fullConfig.application.manifest.full.packages
+  for (const packageIndex in packages) {
+    const pkg = packages[packageIndex]
+    const pkgName = packageIndex
 
-  Object.entries(fullConfig.application.manifest.full.packages).forEach(async ([pkgName, pkg]) => {
     for (const action in pkg.actions) {
       aioLogger.debug('Processing event types defined for action ' + action)
       // Skip actions with empty listeners node
@@ -307,7 +314,7 @@ const hook = async function (options) {
         coreConfig.set(AIO_CONFIG_EVENTS_LISTENERS, appliedEvents, true)
       }
     }
-  })
+  }
 
   await deleteObsoleteRegistrations(fullConfig.application.manifest.full.packages, client, projectConfig.org.id, workspaceIntegration.id)
 }
