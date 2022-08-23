@@ -35,6 +35,9 @@ application:
 ```
 Replace `{{YOUR_EVENT_TYPE}}` with your event and `actions/generic/index.js` with path to your function
 
+### Development
+The plugin subscribes to events during development session (`aio app run`) and cleanup subscriptions on CTRL+C
+
 ## Security
 We recommend to declare all your actions as non-web actions. This way only Adobe IO Events will be able to deliver data to your action.
 
