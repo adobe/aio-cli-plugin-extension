@@ -23,8 +23,6 @@ const ora = require('ora')
 const inquirer = require('inquirer')
 const prompt = inquirer.createPromptModule({ output: process.stderr })
 const { createSequenceIfNotExists, createPackageIfNotExists } = require('../utils')
-const EventEmitter = require('events');
-
 
 const ENTP_INT_CERTS_FOLDER = 'entp-int-certs'
 const CONSOLE_API_KEYS = {
