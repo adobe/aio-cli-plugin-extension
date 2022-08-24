@@ -161,7 +161,7 @@ const hook = async function (options) {
   }
 
   if (!['app:deploy', 'app:undeploy', 'app:run'].includes(options.Command.id)) {
-    aioLogger.debug('App builder extension plugin works only for app:deploy command. Skipping...')
+    aioLogger.debug('App builder extension plugin works only for app:deploy and app:run commands. Skipping...')
     return
   }
 
