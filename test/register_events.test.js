@@ -497,7 +497,7 @@ describe('Extensions plugin hook', () => {
     )
   })
 
-  it('Should register single webhook', async () => {
+  it('Should register single webhook for sequence', async () => {
     loadConfig.mockResolvedValue({
       all: {
         application: {
