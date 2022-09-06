@@ -1,6 +1,6 @@
 {
   "name": "@adobe/aio-cli-plugin-extension",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "dependencies": {
     "@adobe/aio-cli-lib-app-config": "^0.2.1",
     "@adobe/aio-cli-lib-console": "^3.1.0",
@@ -34,10 +34,11 @@
     "eslint-plugin-promise": "^5",
     "eslint-plugin-standard": "^4.0.1",
     "execa": "^4",
-    "jest": "^24",
+    "jest": "^25",
     "jest-haste-map": "^24.5.0",
     "jest-junit": "^6.0.0",
     "jest-resolve": "^24.5.0",
+    "jest-when": "^3.5.1",
     "stdout-stderr": "^0.1.9"
   },
   "engines": {

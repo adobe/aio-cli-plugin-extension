@@ -33,7 +33,9 @@ application:
               event-listener-for:
                 - {{YOUR_EVENT_TYPE}}
 ```
-Replace `{{YOUR_EVENT_TYPE}}` with your event and `actions/generic/index.js` with path to your function
+Replace `{{YOUR_EVENT_TYPE}}` with your event and `actions/generic/index.js` with path to your function.
+
+Supported OpenWhisk entities: actions and sequences.
 
 ### Development
 The plugin subscribes to events during development session (`aio app run`) and cleanup subscriptions on CTRL+C

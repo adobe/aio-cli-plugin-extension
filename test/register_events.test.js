@@ -15,6 +15,7 @@ const LibConsoleCLI = require('@adobe/aio-cli-lib-console')
 const eventsSdk = require('@adobe/aio-lib-events')
 const rtLib = require('@adobe/aio-lib-runtime')
 const inquirer = require('inquirer')
+const { when } = require('jest-when')
 
 const prompt = jest.fn(() => {})
 inquirer.createPromptModule.mockReturnValue(prompt)
@@ -67,24 +68,7 @@ beforeEach(() => {
 
   rtLib.init.mockResolvedValue(rtClient)
 
-  coreConfigMock.set.mockReturnValue(true)
-  coreConfigMock.get.mockReturnValue({ globalConfig: 'seems-legit' })
-  loadConfig.mockResolvedValue({
-    all: {
-      application: {
-        manifest: {
-          full: {
-            packages: []
-          }
-        }
-      }
-    }
-  })
-  getCliEnv.mockResolvedValue('prod')
-  getToken.mockResolvedValue('token mock')
-  context.getCli.mockResolvedValue({ access_token: { token: 'token mock' }})
-  eventsSdk.init.mockResolvedValue(eventsClient)
-  coreConfigMock.get.mockReturnValueOnce({
+  when(coreConfigMock.get).calledWith('project').mockReturnValue({
     id: '123',
     project: undefined,
     projectConfig: {
@@ -105,8 +89,29 @@ beforeEach(() => {
         }]
       }
     }
-  }).mockReturnValueOnce([])
-  .mockReturnValueOnce([])
+  })
+
+  when(coreConfigMock.get).calledWith('project.workspace.listeners').mockReturnValue([])
+
+  when(coreConfigMock.get).calledWith('runtime').mockReturnValue({
+    auth: 'test auth'
+  })
+
+  loadConfig.mockResolvedValue({
+    all: {
+      application: {
+        manifest: {
+          full: {
+            packages: []
+          }
+        }
+      }
+    }
+  })
+  getCliEnv.mockResolvedValue('prod')
+  getToken.mockResolvedValue('token mock')
+  context.getCli.mockResolvedValue({ access_token: { token: 'token mock' }})
+  eventsSdk.init.mockResolvedValue(eventsClient)
 
   LibConsoleCLI.init.mockResolvedValue(consoleCli)
   consoleCli.subscribeToServices.mockReset()
@@ -265,29 +270,7 @@ describe('Extensions plugin hook', () => {
   })
 
   it('Should delete all subscriptions during undeploy command ', async () => {
-    coreConfigMock.get.mockReset()
-    coreConfigMock.get.mockReturnValueOnce({
-      id: '123',
-      project: undefined,
-      projectConfig: {
-        id: '123456789',
-        name: 'test project'
-      },
-      org: {
-        id: 'testid',
-        ims_org_id: 'test@Adobe.org'
-      },
-      workspace: {
-        name: 'Stage',
-        id: 'workspace123',
-        details: {
-          credentials: [{
-            integration_type: 'service',
-            id: 'test_credentials_id'
-          }]
-        }
-      }
-    }).mockReturnValueOnce([
+    when(coreConfigMock.get).calledWith('project.workspace.listeners').mockReturnValue([
       {
         event_type: 'test',
         registration_id: 'registration123'
@@ -330,7 +313,6 @@ describe('Extensions plugin hook', () => {
             }
           }
         }
-
       }
     })
 
@@ -372,13 +354,10 @@ describe('Extensions plugin hook', () => {
             auth: 'test auth'
           }
         }
-
       }
     })
 
     prompt.mockResolvedValue({ res: 'test_provider_id' })
-
-    coreConfigMock.get.mockReturnValueOnce([])
 
     await hook({
       Command: {
@@ -424,8 +403,6 @@ describe('Extensions plugin hook', () => {
     })
 
     prompt.mockResolvedValue({ res: 'test_provider_id3' })
-
-    coreConfigMock.get.mockReturnValueOnce([])
 
     await hook({
       Command: {
@@ -491,7 +468,6 @@ describe('Extensions plugin hook', () => {
 
     prompt.mockResolvedValue({ res: 'test_provider_id2' })
 
-    coreConfigMock.get.mockReturnValueOnce([])
     await hook({
       Command: {
         id: 'app:deploy'
@@ -519,5 +495,54 @@ describe('Extensions plugin hook', () => {
         })])
       })
     )
+  })
+
+  it('Should register single webhook for sequence', async () => {
+    loadConfig.mockResolvedValue({
+      all: {
+        application: {
+          manifest: {
+            full: {
+              packages: {
+                test_package: {
+                  actions: {
+                    test_action: {
+                      runtime: 'nodejs:14'
+                    }
+                  },
+                  sequences: {
+                    test_seq: {
+                      actions: 'test_action',
+                      relations: {
+                        'event-listener-for': ['test_event_type']
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          ow: {
+            namespace: 'test_namespace',
+            apihost: 'http://testhost.comtest',
+            apiversion: 'v1',
+            auth: 'test auth'
+          }
+        }
+      }
+    })
+
+    prompt.mockResolvedValue({ res: 'test_provider_id' })
+
+    await hook({
+      Command: {
+        id: 'app:deploy'
+      },
+      config: {
+        dataDir: '/tmp'
+      }
+    })
+    expect(getAllProviders).toHaveBeenCalledTimes(1)
+    expect(createWebhookRegistration).toHaveBeenCalledTimes(1)
   })
 })
