@@ -23,6 +23,7 @@ inquirer.createPromptModule.mockReturnValue(prompt)
 const deleteWebhookRegistration = jest.fn(() => undefined)
 const getAllProviders = jest.fn(() => undefined)
 const getAllEventMetadataForProvider = jest.fn(() => undefined)
+const getAllWebhookRegistrations = jest.fn(() => [])
 const createWebhookRegistration = jest.fn(() => {
   return {
     registration_id: 'test_registration_id'
@@ -33,7 +34,8 @@ const eventsClient = {
   deleteWebhookRegistration: deleteWebhookRegistration,
   getAllProviders: getAllProviders,
   getAllEventMetadataForProvider: getAllEventMetadataForProvider,
-  createWebhookRegistration: createWebhookRegistration
+  createWebhookRegistration: createWebhookRegistration,
+  getAllWebhookRegistrations: getAllWebhookRegistrations,
 }
 
 const serviceProperties = jest.fn(() => [])
@@ -91,7 +93,9 @@ beforeEach(() => {
     }
   })
 
-  when(coreConfigMock.get).calledWith('project.workspace.listeners').mockReturnValue([])
+  deleteWebhookRegistration.mockReset()
+  getAllWebhookRegistrations.mockReset()
+  getAllWebhookRegistrations.mockReturnValue([])
 
   when(coreConfigMock.get).calledWith('runtime').mockReturnValue({
     auth: 'test auth'
@@ -118,6 +122,7 @@ beforeEach(() => {
   serviceProperties.mockResolvedValue([])
   createWebhookRegistration.mockClear()
 
+  getAllProviders.mockReset()
   getAllProviders.mockResolvedValue({
     _embedded: {
       providers: [
@@ -270,14 +275,12 @@ describe('Extensions plugin hook', () => {
   })
 
   it('Should delete all subscriptions during undeploy command ', async () => {
-    when(coreConfigMock.get).calledWith('project.workspace.listeners').mockReturnValue([
+    getAllWebhookRegistrations.mockReturnValue([
       {
-        event_type: 'test',
-        registration_id: 'registration123'
+        registration_id: 'test_registration_id1'
       },
       {
-        event_type: 'test2',
-        registration_id: 'registration456'
+        registration_id: 'test_registration_id2'
       }
     ])
 
@@ -291,8 +294,8 @@ describe('Extensions plugin hook', () => {
     })
 
     expect(deleteWebhookRegistration).toHaveBeenCalledTimes(2)
-    expect(deleteWebhookRegistration).toHaveBeenCalledWith('testid', 'test_credentials_id', 'registration123')
-    expect(deleteWebhookRegistration).toHaveBeenCalledWith('testid', 'test_credentials_id', 'registration456')
+    expect(deleteWebhookRegistration).toHaveBeenCalledWith('testid', 'test_credentials_id', 'test_registration_id1')
+    expect(deleteWebhookRegistration).toHaveBeenCalledWith('testid', 'test_credentials_id', 'test_registration_id2')
   })
 
   it('Should ignore actions without declared event types', async () => {
@@ -398,7 +401,6 @@ describe('Extensions plugin hook', () => {
             auth: 'test auth'
           }
         }
-
       }
     })
 
@@ -412,7 +414,7 @@ describe('Extensions plugin hook', () => {
         dataDir: '/tmp'
       }
     })
-    expect(getAllProviders).toHaveBeenCalledTimes(1)
+
     expect(createWebhookRegistration).toHaveBeenCalledTimes(1)
     expect(createWebhookRegistration).toBeCalledWith('testid', 'test_credentials_id',
       expect.objectContaining({
@@ -477,7 +479,6 @@ describe('Extensions plugin hook', () => {
       }
     })
 
-    expect(getAllProviders).toHaveBeenCalledTimes(1)
     expect(createWebhookRegistration).toHaveBeenCalledTimes(2)
     expect(createWebhookRegistration).toBeCalledWith('testid', 'test_credentials_id',
       expect.objectContaining({
@@ -542,7 +543,143 @@ describe('Extensions plugin hook', () => {
         dataDir: '/tmp'
       }
     })
-    expect(getAllProviders).toHaveBeenCalledTimes(1)
+
     expect(createWebhookRegistration).toHaveBeenCalledTimes(1)
+  })
+
+  it('Should delete obsolete registrations', async () => {
+    getAllWebhookRegistrations.mockReturnValue([
+      {
+        registration_id: 'test_registration_id1',
+        runtime_action: 'test_package/test_action',
+        events_of_interest: [{
+          event_code: 'obsolete.event.code'
+        }]
+      },
+      {
+        registration_id: 'test_registration_id2',
+        runtime_action: 'test_package/test_seq',
+        events_of_interest: [{
+          event_code: 'obsolete.event.code'
+        }]
+      },
+      {
+        registration_id: 'test_registration_id3',
+        runtime_action: 'test_package/test_action',
+        events_of_interest: [{
+          event_code: 'actual.event.code'
+        }]
+      },
+      {
+        registration_id: 'test_registration_id4',
+        runtime_action: 'test_package/test_seq',
+        events_of_interest: [{
+          event_code: 'actual.event.code'
+        }]
+      }
+    ])
+    loadConfig.mockResolvedValue({
+      all: {
+        application: {
+          manifest: {
+            full: {
+              packages: {
+                test_package: {
+                  actions: {
+                    test_action: {
+                      runtime: 'nodejs:14',
+                      relations: {
+                        'event-listener-for': ['actual.event.code']
+                      }
+                    }
+                  },
+                  sequences: {
+                    test_seq: {
+                      actions: 'test_action',
+                      relations: {
+                        'event-listener-for': ['actual.event.code']
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          ow: {
+            namespace: 'test_namespace',
+            apihost: 'http://testhost.comtest',
+            apiversion: 'v1',
+            auth: 'test auth'
+          }
+        }
+      }
+    })
+
+    prompt.mockResolvedValue({ res: 'test_provider_id' })
+
+    await hook({
+      Command: {
+        id: 'app:deploy'
+      },
+      config: {
+        dataDir: '/tmp'
+      }
+    })
+    expect(deleteWebhookRegistration).toHaveBeenCalledTimes(2)
+    expect(deleteWebhookRegistration).toHaveBeenCalledWith('testid', 'test_credentials_id', 'test_registration_id1')
+    expect(deleteWebhookRegistration).toHaveBeenCalledWith('testid', 'test_credentials_id', 'test_registration_id2')
+  })
+
+  it('Should skip already applied registrations', async () => {
+    getAllWebhookRegistrations.mockReturnValue([
+      {
+        registration_id: 'test_registration_id1',
+        runtime_action: 'test_package/test_action',
+        events_of_interest: [{
+          event_code: 'test_event_type'
+        }]
+      }
+    ])
+    loadConfig.mockResolvedValue({
+      all: {
+        application: {
+          manifest: {
+            full: {
+              packages: {
+                test_package: {
+                  actions: {
+                    test_action: {
+                      runtime: 'nodejs:14',
+                      relations: {
+                        'event-listener-for': ['test_event_type']
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          ow: {
+            namespace: 'test_namespace',
+            apihost: 'http://testhost.comtest',
+            apiversion: 'v1',
+            auth: 'test auth'
+          }
+        }
+
+      }
+    })
+
+    await hook({
+      Command: {
+        id: 'app:deploy'
+      },
+      config: {
+        dataDir: '/tmp'
+      }
+    })
+
+    expect(getAllProviders).toHaveBeenCalledTimes(0)
+    expect(createWebhookRegistration).toHaveBeenCalledTimes(0)
   })
 })

@@ -14,59 +14,68 @@ const loadConfig = require('@adobe/aio-cli-lib-app-config')
 const aioLogger = require('@adobe/aio-lib-core-logging')('@adobe/aio-cli-plugin-extension', { provider: 'debug' })
 const process = require('process')
 const { createSequenceIfNotExists, createPackageIfNotExists, setupEventsClient, findProviderByEvent, selectProvider } = require('../utils')
-
-const AIO_CONFIG_EVENTS_LISTENERS = 'project.workspace.listeners'
 const EVENTS_KEY = 'event-listener-for'
 
 /**
  * Deletes applied registrations which are not present in action's definitions
  *
  * @param {*} packages - packages declaration from app builder manifest
+ * @param {*} registrations - a list of existing registrations
  * @param {*} client - event api client from sdk
  * @param {string} orgId - Adobe org id
  * @param {string} integrationId - id of JWT integration
  */
-async function deleteObsoleteRegistrations (packages, client, orgId, integrationId) {
-  const appliedEvents = coreConfig.get(AIO_CONFIG_EVENTS_LISTENERS) || []
-  const existingListeners = []
+async function deleteObsoleteRegistrations (packages, registrations, client, orgId, integrationId) {
   aioLogger.debug('Processing deleted subscriptions...')
 
-  Object.entries(packages).forEach(async ([pkgName, pkg]) => {
-    for (const index in pkg.actions) {
-      if (!pkg.actions[index].relations || !pkg.actions[index].relations[EVENTS_KEY]) {
-        continue
-      }
-      for (const eventIndex in pkg.actions[index].relations[EVENTS_KEY]) {
-        existingListeners.push(pkg.actions[index].relations[EVENTS_KEY][eventIndex])
-      }
-    }
-    for (const index in pkg.sequences) {
-      if (!pkg.sequences[index].relations || !pkg.sequences[index].relations[EVENTS_KEY]) {
-        continue
-      }
-      for (const eventIndex in pkg.sequences[index].relations[EVENTS_KEY]) {
-        existingListeners.push(pkg.sequences[index].relations[EVENTS_KEY][eventIndex])
-      }
-    }
-  })
+  const isStillListen = function (eventType, fullActionName) {
+    const parts = fullActionName.split('/')
+    const packageName = parts[0]
+    const actionName = parts[1]
 
-  for (const index in appliedEvents) {
-    if (existingListeners.includes(appliedEvents[index].event_type)) {
-      continue
+    if (packages[packageName]) {
+      if (packages[packageName].actions &&
+        packages[packageName].actions[actionName] &&
+        packages[packageName].actions[actionName].relations &&
+        packages[packageName].actions[actionName].relations['event-listener-for']
+      ) {
+        for (const eventIndex in packages[packageName].actions[actionName].relations['event-listener-for']) {
+          if (packages[packageName].actions[actionName].relations['event-listener-for'][eventIndex] === eventType) {
+            return true
+          }
+        }
+      }
+
+      if (packages[packageName].sequences &&
+        packages[packageName].sequences[actionName] &&
+        packages[packageName].sequences[actionName].relations &&
+        packages[packageName].sequences[actionName].relations['event-listener-for']
+      ) {
+        for (const eventIndex in packages[packageName].sequences[actionName].relations['event-listener-for']) {
+          if (packages[packageName].sequences[actionName].relations['event-listener-for'][eventIndex] === eventType) {
+            return true
+          }
+        }
+      }
     }
-    aioLogger.debug('Deleting registration with id: ' + appliedEvents[index].registration_id)
-    try {
-      await client.deleteWebhookRegistration(orgId, integrationId, appliedEvents[index].registration_id)
-    } catch (error) {
-      aioLogger.debug('Error deleting registration with id: ' + appliedEvents[index].registration_id)
-      aioLogger.debug('Cleaning local records for registration with id: ' + appliedEvents[index].registration_id)
-      const newAppliedEvents = appliedEvents.filter(e => e.event_type !== appliedEvents[index].event_type)
-      await coreConfig.set(AIO_CONFIG_EVENTS_LISTENERS, newAppliedEvents, true)
-      return
+
+    return false
+  }
+
+  for (const registration in registrations) {
+    for (const event in registrations[registration].events_of_interest) {
+      if (!isStillListen(
+        registrations[registration].events_of_interest[event].event_code, registrations[registration].runtime_action
+      )) {
+        try {
+          await client.deleteWebhookRegistration(orgId, integrationId, registrations[registration].registration_id)
+          aioLogger.debug('Deleted registration with id: ' + registrations[registration].registration_id)
+        } catch (error) {
+          aioLogger.debug('Error deleting registration with id: ' + registrations[registration].registration_id)
+          continue
+        }
+      }
     }
-    aioLogger.debug('Deleted registration with id: ' + appliedEvents[index].registration_id)
-    const newAppliedEvents = appliedEvents.filter(e => e.event_type !== appliedEvents[index].event_type)
-    await coreConfig.set(AIO_CONFIG_EVENTS_LISTENERS, newAppliedEvents, true)
   }
 }
 
@@ -77,8 +86,6 @@ async function deleteObsoleteRegistrations (packages, client, orgId, integration
  * @yields
  */
 function * parseEvents (packages) {
-  const appliedEvents = coreConfig.get(AIO_CONFIG_EVENTS_LISTENERS) || []
-
   for (const pkgName in packages) {
     const pkg = packages[pkgName]
     for (const action in pkg.actions) {
@@ -90,12 +97,6 @@ function * parseEvents (packages) {
 
       for (const eventCode in pkg.actions[action].relations[EVENTS_KEY]) {
         const currentEventType = pkg.actions[action].relations[EVENTS_KEY][eventCode]
-        const isEventApplied = (appliedEvents.filter(e => e.event_type === currentEventType)).length > 0
-        // Skip already applied event
-        if (isEventApplied) {
-          aioLogger.debug('This app is already subscribed to event ' + currentEventType)
-          continue
-        }
 
         yield {
           eventType: currentEventType,
@@ -113,12 +114,6 @@ function * parseEvents (packages) {
 
       for (const eventCode in pkg.sequences[sequence].relations[EVENTS_KEY]) {
         const currentEventType = pkg.sequences[sequence].relations[EVENTS_KEY][eventCode]
-        const isEventApplied = (appliedEvents.filter(e => e.event_type === currentEventType)).length > 0
-        // Skip already applied event
-        if (isEventApplied) {
-          aioLogger.debug('This app is already subscribed to event ' + currentEventType)
-          continue
-        }
 
         yield {
           eventType: currentEventType,
@@ -128,6 +123,28 @@ function * parseEvents (packages) {
       }
     }
   }
+}
+
+/**
+ * Check if registration exists for specified action/sequence
+ *
+ * @param {*} registrations - a list of existing registrations
+ * @param {*} fullCallableName - namespace + action/sequence name
+ * @param {*} eventType - event type
+ * @returns {boolean} - true if registration exists
+ */
+function isEventApplied (registrations, fullCallableName, eventType) {
+  for (const registrationIndex in registrations) {
+    if (registrations[registrationIndex].runtime_action !== fullCallableName) {
+      continue
+    }
+    for (const eventsIndex in registrations[registrationIndex].events_of_interest) {
+      if (registrations[registrationIndex].events_of_interest[eventsIndex].event_code === eventType) {
+        return true
+      }
+    }
+  }
+  return false
 }
 
 const hook = async function (options) {
@@ -155,19 +172,23 @@ const hook = async function (options) {
   const workspaceIntegration = projectConfig.workspace.details.credentials && projectConfig.workspace.details.credentials.find(c => c.integration_type === 'service')
 
   const { client, workspaceCreds } = await setupEventsClient(project, workspace, options)
+  const registrations = await client.getAllWebhookRegistrations(projectConfig.org.id, workspaceIntegration.id)
 
-  if (['app:undeploy'].includes(options.Command.id)) {
+  if (options.Command.id === 'app:undeploy') {
     aioLogger.debug('Unsubscribing from all events')
-    await deleteObsoleteRegistrations([], client, projectConfig.org.id, workspaceIntegration.id)
+    for (const registration in registrations) {
+      await client.deleteWebhookRegistration(projectConfig.org.id, workspaceIntegration.id, registrations[registration].registration_id)
+    }
     return
   }
 
-  const appliedEvents = coreConfig.get(AIO_CONFIG_EVENTS_LISTENERS) || []
-
   for (const { eventType, packageName, callableName } of parseEvents(fullConfig.application.manifest.full.packages)) {
+    if (isEventApplied(registrations, packageName + '/' + callableName, eventType)) {
+      continue
+    }
+
     const providers = await findProviderByEvent(client, projectConfig.org.id, eventType)
     const currentProvider = await selectProvider(providers, eventType)
-
     const registrationName = 'extension auto registration ' + uuidv4()
 
     // For private event listeners we have to create multiple additional actions and packages
@@ -214,6 +235,7 @@ const hook = async function (options) {
       description: registrationName,
       delivery_type: 'WEBHOOK',
       webhook_url: actionUrl,
+      runtime_action: packageName + '/' + callableName,
       events_of_interest: [
         {
           provider_id: currentProvider.id,
@@ -223,23 +245,20 @@ const hook = async function (options) {
     }
 
     const registration = await client.createWebhookRegistration(projectConfig.org.id, workspaceIntegration.id, body)
-
-    appliedEvents.push({
-      event_type: eventType,
-      registration_id: registration.registration_id
-    })
-
-    coreConfig.set(AIO_CONFIG_EVENTS_LISTENERS, appliedEvents, true)
+    registrations.push(registration)
   }
 
-  await deleteObsoleteRegistrations(fullConfig.application.manifest.full.packages, client, projectConfig.org.id, workspaceIntegration.id)
+  await deleteObsoleteRegistrations(fullConfig.application.manifest.full.packages, registrations, client, projectConfig.org.id, workspaceIntegration.id)
 
   if (['app:run'].includes(options.Command.id)) {
     // TODO: Remove the following hack after app builder plugin fix. The reason of this hack is process.exit call in app builder plugin
     const orginialExit = process.exit
     process.exit = () => {}
     process.on('SIGINT', async () => {
-      await deleteObsoleteRegistrations([], client, projectConfig.org.id, workspaceIntegration.id)
+      aioLogger.debug('End of dev session. Unsubscribing from all events...')
+      for (const registration in registrations) {
+        await client.deleteWebhookRegistration(projectConfig.org.id, workspaceIntegration.id, registrations[registration].registration_id)
+      }
       process.exit = orginialExit
     })
   }
