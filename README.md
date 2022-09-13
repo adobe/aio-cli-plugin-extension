@@ -38,7 +38,11 @@ Replace `{{YOUR_EVENT_TYPE}}` with your event and `actions/generic/index.js` wit
 Supported OpenWhisk entities: actions and sequences.
 
 ### Development
-The plugin subscribes to events during development session (`aio app run`) and cleanup subscriptions on CTRL+C
+We recommend using a separate workspace for development purposes, so please create/choose an existing workspace for development. Switch to the development workspace using `aio app use` CLI command.
+
+The plugin subscribes to events during development session (`aio app run`) and cleanup subscriptions on CTRL+C.
+
+Do not forget to switch back to production workspace when you are ready to deploy the code to production.
 
 ## Security
 We recommend to declare all your actions as non-web actions. This way only Adobe IO Events will be able to deliver data to your action.
