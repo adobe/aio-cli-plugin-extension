@@ -44,6 +44,9 @@ The plugin subscribes to events during development session (`aio app run`) and c
 
 Do not forget to switch back to production workspace when you are ready to deploy the code to production.
 
+### Usage in CI/CD
+When your environment contains multiple suitable event providers, this plugin asks the user to select one manually. This behavior works for many user scenarios, but it may cause issues in CI/CD environment. In such cases, `PREFERRED_PROVIDERS` will help to specify a list of provider ids that will be selected automatically. Example: `PREFERRED_PROVIDERS=c021fed7-54f3-4137-b7d0-1f3abb2e9902,dfa1319c-83ab-406e-869a-067cf89c65ba aio app deploy`
+
 ## Security
 We recommend to declare all your actions as non-web actions. This way only Adobe IO Events will be able to deliver data to your action.
 

@@ -27,6 +27,7 @@ const CONSOLE_API_KEYS = {
   prod: 'aio-cli-console-auth',
   stage: 'aio-cli-console-auth-stage'
 }
+const PREFERRED_PROVIDERS_KEY = 'PREFERRED_PROVIDERS'
 let rtClient
 
 /**
@@ -194,6 +195,18 @@ async function selectProvider (providers, eventType) {
     aioLogger.debug('There is a single matching event provider found for event')
     return providers[0]
   }
+
+  // Automatically select provider from PREFERRED_PROVIDERS env variable
+  if (process.env[PREFERRED_PROVIDERS_KEY]) {
+    const preferredProviders = process.env[PREFERRED_PROVIDERS_KEY].split(',')
+    for (const currentPreferredProvider in preferredProviders) {
+      const providerOverride = providers.find(e => e.id === preferredProviders[currentPreferredProvider])
+      if (providerOverride) {
+        return providerOverride
+      }
+    }
+  }
+
   aioLogger.debug('Multiple event providers found for the event code. Initiating selection dialog...')
   const message = 'We found multiple event providers for event type ' + eventType + '. Please select provider for this project'
   const choices = providers.map(e => { return { name: e.label, value: e.id, instance_id: e.instance_id } })
