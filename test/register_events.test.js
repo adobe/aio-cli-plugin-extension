@@ -67,7 +67,7 @@ const expect = require('expect')
 
 beforeEach(() => {
   coreConfigMock.get.mockReset()
-
+  prompt.mockReset()
   rtLib.init.mockResolvedValue(rtClient)
 
   when(coreConfigMock.get).calledWith('project').mockReturnValue({
@@ -681,5 +681,48 @@ describe('Extensions plugin hook', () => {
 
     expect(getAllProviders).toHaveBeenCalledTimes(0)
     expect(createWebhookRegistration).toHaveBeenCalledTimes(0)
+  })
+
+  it('Should skip prompt with preffered provides set', async () => {
+    process.env['PREFERRED_PROVIDERS'] = 'test_provider_id3'
+    loadConfig.mockResolvedValue({
+      all: {
+        application: {
+          manifest: {
+            full: {
+              packages: {
+                test_package: {
+                  actions: {
+                    test_action: {
+                      runtime: 'nodejs:14',
+                      relations: {
+                        'event-listener-for': ['test_event_type2']
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          ow: {
+            namespace: 'test_namespace',
+            apihost: 'http://testhost.comtest',
+            apiversion: 'v1',
+            auth: 'test auth'
+          }
+        }
+      }
+    })
+
+    await hook({
+      Command: {
+        id: 'app:deploy'
+      },
+      config: {
+        dataDir: '/tmp'
+      }
+    })
+    process.env['PREFERRED_PROVIDERS'] = undefined
+    expect(prompt).toHaveBeenCalledTimes(0)
   })
 })
